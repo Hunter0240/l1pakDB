@@ -1,0 +1,175 @@
+---
+description: Before suggesting any code changes or additions to the project, all developers and AI assistants MUST read and understand this rule document
+globs: 
+---
+# Read Prompts First Rule
+
+## Rule Description
+Before suggesting any code changes or additions to the project, all developers and AI assistants MUST read and understand the contents of the `@prompts` folder, specifically:
+
+- `component_map.md`: Understanding of current architecture and components
+- `current_state.md`: Knowledge of project status and ongoing work
+- `workflow.md`: Familiarity with development workflow
+- `history.md`: Awareness of past changes and decisions
+
+## Glob Patterns
+This rule applies to changes in the following file patterns:
+```glob
+# Core functionality
+Utility/*.cs
+*.cs
+Program.cs
+frmMain.cs
+
+# UI Components
+uc*.cs
+
+# Project configuration
+*.csproj
+App.config
+
+# Documentation and rules
+prompts/*.md
+prompts/*.mdc
+```
+
+## Purpose
+This rule ensures that:
+1. All suggestions align with the current architecture
+2. Changes respect ongoing development efforts
+3. Code maintains consistency with established patterns
+4. Duplicate work is avoided
+5. Technical decisions consider historical context
+
+## Implementation
+
+### Required Reading
+Before making code suggestions:
+1. Review `component_map.md` to understand:
+   - Core components and their responsibilities
+   - UI components and their features
+   - Service architecture and data flow
+   - Component relationships and dependencies
+   - Manager class responsibilities and boundaries
+
+2. Check `current_state.md` for:
+   - Active development areas
+   - Current challenges
+   - Recent changes
+   - Immediate TODOs
+   - Known technical debt
+
+3. Understand workflow from `workflow.md`:
+   - Development process
+   - Branch management
+   - Code review requirements
+   - Testing expectations
+
+4. Review history from `history.md`:
+   - Past architectural decisions
+   - Previous refactoring efforts
+   - Known issues and solutions
+   - Rejected approaches
+
+### Verification Steps
+Before submitting code suggestions:
+- [ ] Confirmed alignment with current architecture
+    * Identifies affected components from component_map.md
+    * Respects established component boundaries
+    * Uses appropriate manager classes
+- [ ] Checked for conflicts with ongoing work
+    * Reviewed active development in current_state.md
+    * Checked for overlap with immediate TODOs
+    * Considered impact on current challenges
+- [ ] Verified consistency with existing patterns
+    * Follows established naming conventions
+    * Uses consistent error handling approaches
+    * Maintains existing design patterns
+- [ ] Reviewed related historical decisions
+    * Checked history.md for relevant past decisions
+    * Considered previously rejected approaches
+    * Understood rationale for current implementation
+- [ ] Ensured suggestion addresses current needs
+    * Aligns with project priorities
+    * Doesn't duplicate existing functionality
+    * Considers future maintainability
+
+## Compliance
+
+### Required Template
+All code suggestions must include:
+
+```markdown
+### Prompt Compliance
+- **Architecture Alignment**:
+  - Affected Components: [List from component_map.md]
+  - Manager Classes Used: [List relevant managers]
+  - Data Flow: [Describe based on Service Architecture]
+
+- **Current State Consideration**:
+  - Related Active Work: [Reference from current_state.md]
+  - Addressed Challenges: [List relevant challenges]
+  - Impact on TODOs: [Describe any effects]
+
+- **Historical Context**:
+  - Related Past Decisions: [Reference from history.md]
+  - Workflow Compliance: [Reference workflow.md requirements]
+```
+
+### Example Compliance Statement
+```markdown
+### Prompt Compliance
+- **Architecture Alignment**:
+  - Affected Components: FileOperationsManager, UIStateManager
+  - Manager Classes Used: ViewerManager for display coordination
+  - Data Flow: Following UI → Manager → Core Services pattern
+
+- **Current State Consideration**:
+  - Related Active Work: UI State Management improvements
+  - Addressed Challenges: Reducing main form coupling
+  - Impact on TODOs: Helps with "Extract list view management"
+
+- **Historical Context**:
+  - Related Past Decisions: Builds on manager-based refactoring
+  - Workflow Compliance: Follows component isolation pattern
+```
+
+## Exceptions
+Emergency fixes may bypass this rule, but must be followed up with:
+1. Post-implementation review against prompts
+2. Documentation update if needed
+3. Refactoring plan if misaligned
+4. Technical debt recording in current_state.md
+
+## Updates
+The contents of the `@prompts` folder should be treated as living documentation and updated when:
+- New architectural decisions are made
+- Significant refactoring occurs
+- New components are added
+- Development priorities change
+- New patterns are established
+- Technical debt is identified
+- Major bugs are discovered and fixed
+
+### Update Process
+1. Identify affected prompt files
+2. Create backup of current version
+3. Update relevant sections
+4. Add timestamp and reason for update
+5. Cross-reference in other prompt files if needed
+6. Notify team of significant changes
+
+## Validation
+Regular validation of this rule's effectiveness:
+1. Monthly review of code changes
+2. Check compliance rate
+3. Assess documentation freshness
+4. Gather feedback on rule's impact
+5. Update rule based on findings
+
+## Tools and Automation
+- Use provided templates for compliance
+- Maintain changelog in each prompt file
+- Consider adding automated checks
+- Use markdown linting for consistency
+- Keep cross-references up to date

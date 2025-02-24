@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!--Project was exported from assembly: C:\Users\TonyQ\Downloads\PakViewer.exe-->
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -7,9 +7,11 @@
     <ProjectGuid>{7668AD9C-3EF9-4BDB-81D2-C767542C7345}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <AssemblyName>PakViewer</AssemblyName>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <RootNamespace>PakViewer</RootNamespace>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
     <UpgradeBackupLocation>
@@ -52,23 +54,20 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestCertificateThumbprint>167BAB719918144389E86D54F4731D1545FABD11</ManifestCertificateThumbprint>
-  </PropertyGroup>
-  <PropertyGroup>
-    <ManifestKeyFile>PakViewer_TemporaryKey.pfx</ManifestKeyFile>
-  </PropertyGroup>
-  <PropertyGroup>
     <GenerateManifests>true</GenerateManifests>
   </PropertyGroup>
-  <PropertyGroup>
-    <SignManifests>true</SignManifests>
-  </PropertyGroup>
   <ItemGroup>
-    <Reference Include="System.Windows.Forms" />
     <Reference Include="System" />
+    <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="frmMain.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="ucTextCompare.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -78,23 +77,31 @@
     <Compile Include="ucSprViewer.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="Program.cs" />
-    <Compile Include="frmMain.cs">
-      <SubType>Form</SubType>
-    </Compile>
+    <Compile Include="Utility\FileFilterManager.cs" />
+    <Compile Include="Utility\FileOperationsManager.cs" />
+    <Compile Include="Utility\UIStateManager.cs" />
+    <Compile Include="Utility\ViewerManager.cs" />
     <Compile Include="Utility\ImageConvert.cs" />
     <Compile Include="Utility\L1PakTools.cs" />
     <Compile Include="Utility\L1Spr.cs" />
+    <Compile Include="Utility\PakFileManager.cs" />
     <Compile Include="Properties\Settings.cs" />
     <Compile Include="Properties\Resources.cs" />
-    <Compile Include="AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="frmMain.resx" />
+    <EmbeddedResource Include="frmMain.resx">
+      <DependentUpon>frmMain.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ucImgViewer.resx">
+      <DependentUpon>ucImgViewer.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ucSprViewer.resx">
+      <DependentUpon>ucSprViewer.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ucTextCompare.resx">
+      <DependentUpon>ucTextCompare.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx" />
-    <EmbeddedResource Include="ucImgViewer.resx" />
-    <EmbeddedResource Include="ucSprViewer.resx" />
-    <EmbeddedResource Include="ucTextCompare.resx" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
@@ -104,7 +111,9 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <None Include="PakViewer_TemporaryKey.pfx" />
+    <None Include="App.config">
+      <SubType>Designer</SubType>
+    </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

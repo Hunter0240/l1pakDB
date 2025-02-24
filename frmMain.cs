@@ -1,10 +1,4 @@
-﻿// Decompiled with JetBrains decompiler
-// Type: PakViewer.frmMain
-// Assembly: PakViewer, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
-// MVID: 1B8FBB7F-36BB-4233-90DD-580453361518
-// Assembly location: C:\Users\TonyQ\Downloads\PakViewer.exe
-
-using PakViewer.Properties;
+﻿using PakViewer.Properties;
 using PakViewer.Utility;
 using System;
 using System.Collections;
@@ -16,16 +10,19 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using System.Linq;
 
 namespace PakViewer
 {
   public class frmMain : Form
   {
+    private PakFileManager _pakFileManager;
+    private FileFilterManager _filterManager;
+    private FileOperationsManager _fileOperationsManager;
+    private UIStateManager _uiStateManager;
+    private ViewerManager _viewerManager;
     private string _PackFileName;
-    private bool _IsPackFileProtected;
-    private L1PakTools.IndexRecord[] _IndexRecords;
     private string _TextLanguage;
-    private frmMain.InviewDataType _InviewData;
     private IContainer components;
     private MenuStrip menuStrip1;
     private ToolStripMenuItem mnuFile;
@@ -46,20 +43,9 @@ namespace PakViewer
     private ToolStripMenuItem mnuFiller_Text_html;
     private ToolStripSeparator toolStripSeparator5;
     private ToolStripMenuItem mnuFiller_Text_C;
-    private ToolStripMenuItem mnuFiller_Text_J;
     private ToolStripMenuItem mnuFiller_Text_H;
+    private ToolStripMenuItem mnuFiller_Text_J;
     private ToolStripMenuItem mnuFiller_Text_K;
-    private ToolStripSeparator toolStripSeparator4;
-    private ContextMenuStrip ctxMenu;
-    private ToolStripMenuItem tsmExportTo;
-    private ToolStripMenuItem tsmExport;
-    private ToolStripSeparator toolStripSeparator6;
-    private ToolStripMenuItem tsmUnselectAll;
-    private ToolStripMenuItem tsmSelectAll;
-    private StatusStrip statusStrip1;
-    private ToolStripStatusLabel tssMessage;
-    private ToolStripProgressBar tssProgress;
-    private ToolStripStatusLabel tssProgressName;
     private ToolStripSeparator toolStripSeparator7;
     private ToolStripMenuItem mnuFiller_Sprite_spr;
     private ToolStripMenuItem mnuFiller_Tile_til;
@@ -96,10 +82,59 @@ namespace PakViewer
     private ToolStripMenuItem tsmCompJP;
     private ToolStripMenuItem tsmCompKO;
     private ucTextCompare TextCompViewer;
+    private ToolStripSeparator toolStripSeparator4;
+    private ToolStripSeparator toolStripSeparator6;
+    private ContextMenuStrip ctxMenu;
+    private ToolStripMenuItem tsmExport;
+    private ToolStripMenuItem tsmExportTo;
+    private ToolStripMenuItem tsmUnselectAll;
+    private ToolStripMenuItem tsmSelectAll;
+    private StatusStrip statusStrip1;
+    private ToolStripStatusLabel tssMessage;
+    private ToolStripStatusLabel tssProgressName;
+    private ToolStripProgressBar tssProgress;
+    private Dictionary<int, string> _recordSourceFiles = new Dictionary<int, string>();
 
     public frmMain()
     {
       this.InitializeComponent();
+      this.SetupUI();
+      this._filterManager = new FileFilterManager();
+      InitializeManagers();
+    }
+
+    private void InitializeManagers()
+    {
+      _fileOperationsManager = new FileOperationsManager(
+        _pakFileManager,
+        text => this.tssProgressName.Text = text,
+        value => this.tssProgress.Value = value,
+        max => this.tssProgress.Maximum = max
+      );
+
+      _uiStateManager = new UIStateManager(
+        this.TextViewer,
+        this.ImageViewer,
+        this.SprViewer,
+        this.TextCompViewer,
+        this.tssMessage,
+        this.tssProgressName,
+        this.tssProgress,
+        this.lvIndexInfo,
+        this.menuStrip1
+      );
+
+      _viewerManager = new ViewerManager(
+        this.TextViewer,
+        this.ImageViewer,
+        this.SprViewer,
+        this.TextCompViewer,
+        _uiStateManager
+      );
+    }
+
+    private void SetupUI()
+    {
       this.TextViewer.Dock = DockStyle.Fill;
       this.ImageViewer.Dock = DockStyle.Fill;
       this.SprViewer.Dock = DockStyle.Fill;
@@ -114,15 +149,20 @@ namespace PakViewer
       this.lvIndexInfo.Columns.Add("Size", 70, HorizontalAlignment.Right);
       this.lvIndexInfo.Columns.Add("Position", 70, HorizontalAlignment.Right);
       this.splitContainer1.SplitterDistance = 390;
-      this.mnuTools.Click += (EventHandler) ((sender, e) =>
+      this.SetupMenuHandlers();
+    }
+
+    private void SetupMenuHandlers()
+    {
+      this.mnuTools.Click += (sender, e) =>
       {
         this.mnuTools_Export.Enabled = this.lvIndexInfo.CheckedItems.Count > 0;
         this.mnuTools_ExportTo.Enabled = this.mnuTools_Export.Enabled;
         this.mnuTools_Delete.Enabled = this.mnuTools_Export.Enabled;
         this.mnuTools_Add.Enabled = this.lvIndexInfo.Items.Count > 0;
-        this.mnuTools_Update.Enabled = this._InviewData == frmMain.InviewDataType.Text && this.TextViewer.Modified;
-      });
-      this.mnuQuit.Click += (EventHandler) ((sender, e) => this.Close());
+        this.mnuTools_Update.Enabled = _viewerManager.CurrentViewType == Utility.InviewDataType.Text && this.TextViewer.Modified;
+      };
+      this.mnuQuit.Click += (sender, e) => this.Close();
       L1PakTools.ShowProgress(this.tssProgress);
     }
 
@@ -132,26 +172,51 @@ namespace PakViewer
       this.dlgOpenFile.DefaultExt = "idx";
       this.dlgOpenFile.AddExtension = true;
       this.dlgOpenFile.FileName = "";
-      int num1 = (int) this.dlgOpenFile.ShowDialog((IWin32Window) this);
-      if (!(this.dlgOpenFile.FileName != ""))
+      this.dlgOpenFile.Multiselect = true;
+      if (this.dlgOpenFile.ShowDialog(this) != DialogResult.OK || this.dlgOpenFile.FileNames.Length == 0)
         return;
-      this._PackFileName = this.dlgOpenFile.FileName.ToLower();
-      this.Cursor = Cursors.WaitCursor;
-      this.lvIndexInfo.Items.Clear();
-      this._IndexRecords = this.CreatIndexRecords(this.LoadIndexData(this._PackFileName));
-      if (this._IndexRecords == null)
+
+      _uiStateManager.SetCursor(Cursors.WaitCursor);
+      _uiStateManager.UpdateListView(new ListViewItem[0]);
+      _viewerManager.ClearContent();
+
+      var allRecords = new List<L1PakTools.IndexRecord>();
+      _recordSourceFiles.Clear();
+      bool anyFileLoaded = false;
+      int currentIndex = 0;
+
+      foreach (string fileName in this.dlgOpenFile.FileNames)
       {
-        int num2 = (int) MessageBox.Show("The file can't be parsed. It might be broken or not correct idx file.");
-        this.mnuFiller.Enabled = false;
-        this.mnuRebuild.Enabled = false;
+        this._PackFileName = fileName.ToLower();
+        this._pakFileManager = new PakFileManager(this._PackFileName);
+        InitializeManagers();
+        
+        if (!this._pakFileManager.LoadIndexFile())
+        {
+          MessageBox.Show($"The file {fileName} can't be parsed. It might be broken or not correct idx file.");
+          continue;
+        }
+
+        // Store the source file for each record
+        for (int i = 0; i < this._pakFileManager.IndexRecords.Length; i++)
+        {
+          _recordSourceFiles[currentIndex + i] = fileName;
+        }
+        
+        allRecords.AddRange(this._pakFileManager.IndexRecords);
+        currentIndex += this._pakFileManager.IndexRecords.Length;
+        anyFileLoaded = true;
       }
-      else
+
+      if (anyFileLoaded)
       {
-        this.ShowRecords(this._IndexRecords);
-        this.mnuFiller.Enabled = true;
-        this.mnuRebuild.Enabled = true;
+        // Update the records in the current PakFileManager
+        this._pakFileManager.IndexRecords = allRecords.ToArray();
+        this.ShowRecords(this._pakFileManager.IndexRecords);
+        _uiStateManager.UpdateMenuState(true, this._pakFileManager.IsProtected);
       }
-      this.Cursor = Cursors.Default;
+      
+      _uiStateManager.SetCursor(Cursors.Default);
     }
 
     private void mnuFiller_Text_Language(object sender, EventArgs e)
@@ -159,91 +224,61 @@ namespace PakViewer
       this._TextLanguage = (this.mnuFiller_Text_C.Checked ? "-c" : "") + (this.mnuFiller_Text_H.Checked ? "-h" : "") + (this.mnuFiller_Text_J.Checked ? "-j" : "") + (this.mnuFiller_Text_K.Checked ? "-k" : "");
       Settings.Default.DefaultLang = this._TextLanguage;
       Settings.Default.Save();
-      if (this._IndexRecords == null)
-        return;
-      this.ShowRecords(this._IndexRecords);
-    }
-
-    private void mnuFiller_FileStyle(object sender, EventArgs e)
-    {
-      if (this._IndexRecords == null)
-        return;
-      this.ShowRecords(this._IndexRecords);
-    }
-
-    private byte[] LoadIndexData(string IndexFile)
-    {
-      byte[] numArray = File.ReadAllBytes(IndexFile);
-      int num = (numArray.Length - 4) / 28;
-      if (numArray.Length < 32 || (numArray.Length - 4) % 28 != 0)
-        return (byte[]) null;
-      if ((long) BitConverter.ToUInt32(numArray, 0) != (long) num)
-        return (byte[]) null;
-      this._IsPackFileProtected = false;
-      this.tssLocker.Visible = false;
-      if (!Regex.IsMatch(Encoding.Default.GetString(numArray, 8, 20), "^([a-zA-Z0-9_\\-\\.']+)", RegexOptions.IgnoreCase))
+      this.UpdateLanguageFilters();
+      if (this._pakFileManager?.IndexRecords != null)
       {
-        if (!Regex.IsMatch(L1PakTools.Decode_Index_FirstRecord(numArray).FileName, "^([a-zA-Z0-9_\\-\\.']+)", RegexOptions.IgnoreCase))
-          return (byte[]) null;
-        this._IsPackFileProtected = true;
-        this.tssLocker.Visible = true;
-        this.tssProgressName.Text = "Decoding... ";
-        numArray = L1PakTools.Decode(numArray, 4);
-        this.tssProgressName.Text = "";
+        this.ShowRecords(this._pakFileManager.IndexRecords);
       }
-      return numArray;
     }
 
-    private L1PakTools.IndexRecord[] CreatIndexRecords(byte[] IndexData)
+    private void UpdateLanguageFilters()
     {
-      if (IndexData == null)
-        return (L1PakTools.IndexRecord[]) null;
-      int num = this._IsPackFileProtected ? 0 : 4;
-      int length = (IndexData.Length - num) / 28;
-      L1PakTools.IndexRecord[] indexRecordArray = new L1PakTools.IndexRecord[length];
-      this.tssProgressName.Text = "Loading...";
-      this.tssProgress.Maximum = length;
-      for (int index1 = 0; index1 < length; ++index1)
+      if (_filterManager == null)
       {
-        int index2 = num + index1 * 28;
-        indexRecordArray[index1] = new L1PakTools.IndexRecord(IndexData, index2);
-        //Console.WriteLine(index1+":"+indexRecordArray[index1].FileName + ":" + indexRecordArray[index1].FileSize + ":" + indexRecordArray[index1].Offset);
-        this.tssProgress.Increment(1);
+        _filterManager = new FileFilterManager();
       }
-      this.tssProgressName.Text = "";
-      return indexRecordArray;
+
+      _filterManager.ClearFilters();
+      if (this.mnuFiller_Text_C.Checked)
+        _filterManager.SetLanguageFilter("-c", true);
+      if (this.mnuFiller_Text_H.Checked)
+        _filterManager.SetLanguageFilter("-h", true);
+      if (this.mnuFiller_Text_J.Checked)
+        _filterManager.SetLanguageFilter("-j", true);
+      if (this.mnuFiller_Text_K.Checked)
+        _filterManager.SetLanguageFilter("-k", true);
+      if (this.mnuFiller_Text_html.Checked)
+        _filterManager.SetExtensionFilter(".html", true);
+      if (this.mnuFiller_Sprite_spr.Checked)
+        _filterManager.SetExtensionFilter(".spr", true);
+      if (this.mnuFiller_Tile_til.Checked)
+        _filterManager.SetExtensionFilter(".til", true);
+      if (this.mnuFiller_Sprite_img.Checked)
+        _filterManager.SetExtensionFilter(".img", true);
+      if (this.mnuFiller_Sprite_png.Checked)
+        _filterManager.SetExtensionFilter(".png", true);
+      if (this.mnuFiller_Sprite_tbt.Checked)
+        _filterManager.SetExtensionFilter(".tbt", true);
     }
 
-    private void ShowRecords(L1PakTools.IndexRecord[] Records)
+    private void ShowRecords(L1PakTools.IndexRecord[] records)
     {
-      List<ListViewItem> listViewItemList = new List<ListViewItem>();
-      for (int ID = 0; ID < Records.Length; ++ID)
+      ListViewItem[] items = new ListViewItem[records.Length];
+      for (int i = 0; i < records.Length; i++)
       {
-        L1PakTools.IndexRecord record = Records[ID];
-        string extension = Path.GetExtension(record.FileName.ToLower());
-        if ((!(extension == "html") || this.mnuFiller_Text_html.Checked) && (!(extension == "spr") || this.mnuFiller_Sprite_spr.Checked) && ((!(extension == "til") || this.mnuFiller_Tile_til.Checked) && (!(extension == "img") || this.mnuFiller_Sprite_img.Checked)) && ((!(extension == "png") || this.mnuFiller_Sprite_png.Checked) && (!(extension == "tbt") || this.mnuFiller_Sprite_tbt.Checked)))
-        {
-          string withoutExtension = Path.GetFileNameWithoutExtension(record.FileName.ToLower());
-          if (withoutExtension.LastIndexOf("-") < 0 || withoutExtension.Length < 2 || this._TextLanguage.Contains(withoutExtension.Substring(withoutExtension.Length - 2)))
-            listViewItemList.Add(this.CreatListViewItem(ID, record));
-        }
+        items[i] = this.CreateListViewItem(i, records[i]);
       }
-      this.lvIndexInfo.SuspendLayout();
-      this.lvIndexInfo.Items.Clear();
-      this.lvIndexInfo.Items.AddRange(listViewItemList.ToArray());
-      this.lvIndexInfo.ResumeLayout();
-      this.tssRecordCount.Text = string.Format("All:{0}", (object) Records.Length);
-      this.tssShowInListView.Text = string.Format("Showing:{0}", (object) this.lvIndexInfo.Items.Count);
+      _uiStateManager.UpdateListView(items);
     }
 
-    private ListViewItem CreatListViewItem(int ID, L1PakTools.IndexRecord IdxRec)
+    private ListViewItem CreateListViewItem(int id, L1PakTools.IndexRecord record)
     {
-      return new ListViewItem(string.Format("{0, 5}", (object) (ID + 1)))
+      return new ListViewItem(string.Format("{0,5}", id + 1))
       {
         SubItems = {
-          IdxRec.FileName,
-          IdxRec.FileSize.ToString("N00"),
-          IdxRec.Offset.ToString("X8")
+          record.FileName,
+          record.FileSize.ToString("N00"),
+          record.Offset.ToString("X8")
         }
       };
     }
@@ -273,334 +308,136 @@ namespace PakViewer
 
     private void lvIndexInfo_SelectedIndexChanged(object sender, EventArgs e)
     {
-      if (this.lvIndexInfo.SelectedItems.Count > 1)
+      _uiStateManager.SetStatusMessage("");
+      _viewerManager.ClearContent();
+
+      if (this.lvIndexInfo.SelectedItems.Count == 0)
         return;
-      this.tssMessage.Text = "";
-      this.ImageViewer.Image = (Image) null;
-      IEnumerator enumerator = this.lvIndexInfo.SelectedItems.GetEnumerator();
+
+      // Group selected items by source file
+      var itemsBySourceFile = new Dictionary<string, List<ListViewItem>>();
+      foreach (ListViewItem item in this.lvIndexInfo.SelectedItems)
+      {
+        int recordIndex = int.Parse(item.Text) - 1;
+        string sourceFile = _recordSourceFiles[recordIndex];
+        if (!itemsBySourceFile.ContainsKey(sourceFile))
+        {
+          itemsBySourceFile[sourceFile] = new List<ListViewItem>();
+        }
+        itemsBySourceFile[sourceFile].Add(item);
+      }
+
       try
       {
-        if (!enumerator.MoveNext())
-          return;
-        ListViewItem current = (ListViewItem) enumerator.Current;
-        FileStream fs = File.Open(this._PackFileName.Replace(".idx", ".pak"), FileMode.Open, FileAccess.Read);
-        object obj = this.LoadPakData(fs, current);
-        fs.Close();
-        this.ViewerSwitch();
-        if (this._InviewData == frmMain.InviewDataType.Text)
-        {
-          this.TextViewer.Text = (string) obj;
-          this.TextViewer.Tag = (object) current.Text;
-        }
-        else if (this._InviewData == frmMain.InviewDataType.IMG || this._InviewData == frmMain.InviewDataType.BMP || (this._InviewData == frmMain.InviewDataType.TBT || this._InviewData == frmMain.InviewDataType.TIL))
-        {
-          this.ImageViewer.Image = (Image) obj;
-        }
-        else
-        {
-          if (this._InviewData != frmMain.InviewDataType.SPR)
-            return;
-          this.SprViewer.SprFrames = (L1Spr.Frame[]) obj;
-          this.SprViewer.Start();
-        }
-      }
-      finally
-      {
-        IDisposable disposable = enumerator as IDisposable;
-        if (disposable != null)
-          disposable.Dispose();
-      }
-    }
+        // Load all selected items and determine the common type
+        var selectedContents = new List<(object content, InviewDataType viewType, string tag)>();
+        InviewDataType commonType = InviewDataType.Empty;
 
-    private void ViewerSwitch()
-    {
-      this.TextCompViewer.Visible = false;
-      if (this._InviewData == frmMain.InviewDataType.Text)
-      {
-        this.TextViewer.Visible = true;
-        this.ImageViewer.Visible = false;
-        this.SprViewer.Visible = false;
-      }
-      else if (this._InviewData == frmMain.InviewDataType.IMG || this._InviewData == frmMain.InviewDataType.BMP || this._InviewData == frmMain.InviewDataType.TBT)
-      {
-        this.ImageViewer.Visible = true;
-        this.TextViewer.Visible = false;
-        this.SprViewer.Visible = false;
-      }
-      else
-      {
-        if (this._InviewData != frmMain.InviewDataType.SPR)
-          return;
-        this.SprViewer.Visible = true;
-        this.ImageViewer.Visible = false;
-        this.TextViewer.Visible = false;
-      }
-    }
-
-    private object LoadPakData(FileStream fs, ListViewItem lvItem)
-    {
-      L1PakTools.IndexRecord indexRecord = this._IndexRecords[int.Parse(lvItem.Text) - 1];
-      return this.LoadPakData_(fs, indexRecord);
-    }
-
-    private byte[] LoadPakBytes_(FileStream fs, ListViewItem lvItem) { 
-        L1PakTools.IndexRecord IdxRec = this._IndexRecords[int.Parse(lvItem.Text) - 1];
-        string[] array = new string[13]
+        // Process items from each source file
+        foreach (var sourceGroup in itemsBySourceFile)
         {
-    ".img",
-    ".png",
-    ".tbt",
-    ".til",
-    ".html",
-    ".tbl",
-    ".spr",
-    ".bmp",
-    ".h",
-    ".ht",
-    ".htm",
-    ".txt",
-    ".def"
-        };
-        frmMain.InviewDataType[] inviewDataTypeArray = new frmMain.InviewDataType[13]
-        {
-    frmMain.InviewDataType.IMG,
-    frmMain.InviewDataType.BMP,
-    frmMain.InviewDataType.TBT,
-    frmMain.InviewDataType.Empty,
-    frmMain.InviewDataType.Text,
-    frmMain.InviewDataType.Text,
-    frmMain.InviewDataType.SPR,
-    frmMain.InviewDataType.BMP,
-    frmMain.InviewDataType.Text,
-    frmMain.InviewDataType.Text,
-    frmMain.InviewDataType.Text,
-    frmMain.InviewDataType.Text,
-    frmMain.InviewDataType.Text
-        };
-        int index = Array.IndexOf<string>(array, Path.GetExtension(IdxRec.FileName).ToLower());
-        this._InviewData = index != -1 ? inviewDataTypeArray[index] : frmMain.InviewDataType.Empty;
-
-        if (IdxRec.FileName.IndexOf("list.spr") != -1)
-        {
-            this._InviewData = frmMain.InviewDataType.Text;
-        }
-        byte[] numArray = new byte[IdxRec.FileSize];
-        fs.Seek((long)IdxRec.Offset, SeekOrigin.Begin);
-        fs.Read(numArray, 0, IdxRec.FileSize);
-        if (this._IsPackFileProtected)
-        {
-            this.tssProgressName.Text = "Decoding...";
-            numArray = L1PakTools.Decode(numArray, 0);
-            this.tssProgressName.Text = "";
-            if (this._InviewData == frmMain.InviewDataType.SPR)
-                this._InviewData = frmMain.InviewDataType.Text;
-        }
-         return numArray;
-    }
-    private object LoadPakData_(FileStream fs, L1PakTools.IndexRecord IdxRec)
-    {
-      string[] array = new string[13]
-      {
-        ".img",
-        ".png",
-        ".tbt",
-        ".til",
-        ".html",
-        ".tbl",
-        ".spr",
-        ".bmp",
-        ".h",
-        ".ht",
-        ".htm",
-        ".txt",
-        ".def"
-      };
-      frmMain.InviewDataType[] inviewDataTypeArray = new frmMain.InviewDataType[13]
-      {
-        frmMain.InviewDataType.IMG,
-        frmMain.InviewDataType.BMP,
-        frmMain.InviewDataType.TBT,
-        frmMain.InviewDataType.Empty,
-        frmMain.InviewDataType.Text,
-        frmMain.InviewDataType.Text,
-        frmMain.InviewDataType.SPR,
-        frmMain.InviewDataType.BMP,
-        frmMain.InviewDataType.Text,
-        frmMain.InviewDataType.Text,
-        frmMain.InviewDataType.Text,
-        frmMain.InviewDataType.Text,
-        frmMain.InviewDataType.Text
-      };
-      int index = Array.IndexOf<string>(array, Path.GetExtension(IdxRec.FileName).ToLower());
-      this._InviewData = index != -1 ? inviewDataTypeArray[index] : frmMain.InviewDataType.Empty;
-
-      if(IdxRec.FileName.IndexOf("list.spr") != -1)
-      {
-         this._InviewData = frmMain.InviewDataType.Text;
-      }
-      byte[] numArray = new byte[IdxRec.FileSize];
-      fs.Seek((long) IdxRec.Offset, SeekOrigin.Begin);
-      fs.Read(numArray, 0, IdxRec.FileSize);
-      if (this._IsPackFileProtected)
-      {
-        this.tssProgressName.Text = "Decoding...";
-        numArray = L1PakTools.Decode(numArray, 0);
-        this.tssProgressName.Text = "";
-        if (this._InviewData == frmMain.InviewDataType.SPR)
-          this._InviewData = frmMain.InviewDataType.Text;
-      }
-      object obj = (object) numArray;
-      try
-      {
-        switch (this._InviewData)
-        {
-          case frmMain.InviewDataType.Text:
-            obj = IdxRec.FileName.ToLower().IndexOf("-k.") < 0 ? (IdxRec.FileName.ToLower().IndexOf("-j.") < 0 ? (IdxRec.FileName.ToLower().IndexOf("-h.") < 0 ? (IdxRec.FileName.ToLower().IndexOf("-c.") < 0 ? (object) Encoding.Default.GetString(numArray) : (object) Encoding.GetEncoding("big5").GetString(numArray)) : (object) Encoding.GetEncoding("euc-cn").GetString(numArray)) : (object) Encoding.GetEncoding("shift_jis").GetString(numArray)) : (object) Encoding.GetEncoding("euc-kr").GetString(numArray);
-            break;
-          case frmMain.InviewDataType.IMG:
-            obj = (object) ImageConvert.Load_IMG(numArray);
-            break;
-          case frmMain.InviewDataType.BMP:
-            MemoryStream memoryStream = new MemoryStream(numArray);
-            try
+          string pakFile = sourceGroup.Key.Replace(".idx", ".pak");
+          using (FileStream fs = File.Open(pakFile, FileMode.Open, FileAccess.Read))
+          {
+            foreach (ListViewItem item in sourceGroup.Value)
             {
-              obj = (object) Image.FromStream((Stream) memoryStream);
-              break;
+              var (content, viewType) = this._fileOperationsManager.LoadPakData(fs, item);
+              selectedContents.Add((content, viewType, item.Text));
+              
+              // Set the common type to the first non-empty type we find
+              if (commonType == InviewDataType.Empty && viewType != InviewDataType.Empty)
+              {
+                commonType = viewType;
+              }
+              // If types don't match, default to text view
+              else if (commonType != viewType && viewType != InviewDataType.Empty)
+              {
+                commonType = InviewDataType.Text;
+              }
             }
-            finally
+          }
+        }
+
+        // Set the view type first
+        _viewerManager.CurrentViewType = commonType;
+
+        // Combine the content based on type
+        switch (commonType)
+        {
+          case InviewDataType.Text:
+            var combinedText = new StringBuilder();
+            foreach (var (content, _, tag) in selectedContents)
             {
-              memoryStream.Close();
+              if (content is string text)
+              {
+                combinedText.AppendLine($"=== {tag} ===");
+                combinedText.AppendLine(text);
+                combinedText.AppendLine();
+              }
             }
-          case frmMain.InviewDataType.SPR:
-            obj = (object) L1Spr.Load(numArray);
+            _viewerManager.DisplayContent(combinedText.ToString());
             break;
-          case frmMain.InviewDataType.TIL:
-            obj = (object) ImageConvert.Load_TIL(numArray);
+
+          case InviewDataType.IMG:
+          case InviewDataType.BMP:
+          case InviewDataType.TBT:
+          case InviewDataType.TIL:
+            // For images, show the first one
+            var firstImage = selectedContents.FirstOrDefault(x => x.content is Image);
+            if (firstImage.content != null)
+            {
+              _viewerManager.DisplayContent(firstImage.content);
+            }
             break;
-          case frmMain.InviewDataType.TBT:
-            obj = (object) ImageConvert.Load_TBT(numArray);
+
+          case InviewDataType.SPR:
+            // For sprites, show the first one
+            var firstSprite = selectedContents.FirstOrDefault(x => x.content is L1Spr.Frame[]);
+            if (firstSprite.content != null)
+            {
+              _viewerManager.DisplayContent(firstSprite.content);
+            }
             break;
         }
       }
-      catch
+      catch (Exception ex)
       {
-        this._InviewData = frmMain.InviewDataType.Empty;
-        this.tssMessage.Text = "*Error *: Can't open this file!";
-      }
-      return obj;
-    }
-
-    private void tsmSelectAll_Click(object sender, EventArgs e)
-    {
-      foreach (ListViewItem listViewItem in this.lvIndexInfo.Items)
-      {
-        listViewItem.Selected = true;
-        listViewItem.Checked = true;
+        _uiStateManager.SetStatusMessage($"Error: {ex.Message}");
       }
     }
 
-    private void tsmUnselectAll_Click(object sender, EventArgs e)
+    private void ExportSelected(string path, ListViewItem lvItem)
     {
-      foreach (ListViewItem listViewItem in this.lvIndexInfo.Items)
+      int recordIndex = int.Parse(lvItem.Text) - 1;
+      string sourceFile = _recordSourceFiles[recordIndex];
+      string pakFile = sourceFile.Replace(".idx", ".pak");
+
+      using (FileStream fs = File.Open(pakFile, FileMode.Open, FileAccess.Read))
       {
-        listViewItem.Selected = false;
-        listViewItem.Checked = false;
-      }
-    }
-
-    private void tsmExport_Click(object sender, EventArgs e)
-    {
-      foreach (ListViewItem selectedItem in this.lvIndexInfo.SelectedItems)
-        this.ExportSelected(Path.GetDirectoryName(this._PackFileName), selectedItem);
-    }
-
-    private void tsmExportTo_Click(object sender, EventArgs e)
-    {
-      if (this.dlgOpenFolder.ShowDialog((IWin32Window) this) != DialogResult.OK)
-        return;
-      string selectedPath = this.dlgOpenFolder.SelectedPath;
-      foreach (ListViewItem selectedItem in this.lvIndexInfo.SelectedItems)
-        this.ExportSelected(selectedPath, selectedItem);
-    }
-
-    private void mnuTools_Export_Click(object sender, EventArgs e)
-    {
-      FileStream fs = File.Open(this._PackFileName.Replace(".idx", ".pak"), FileMode.Open, FileAccess.Read);
-      foreach (ListViewItem checkedItem in this.lvIndexInfo.CheckedItems)
-      {
-        object data = this.LoadPakData(fs, checkedItem);
-        this.ExportData(Path.GetDirectoryName(this._PackFileName), checkedItem, data,this.LoadPakBytes_(fs,checkedItem));
-      }
-      fs.Close();
-    }
-
-    private void mnuTools_ExportTo_Click(object sender, EventArgs e)
-    {
-      if (this.dlgOpenFolder.ShowDialog((IWin32Window) this) != DialogResult.OK)
-        return;
-      string selectedPath = this.dlgOpenFolder.SelectedPath;
-      FileStream fs = File.Open(this._PackFileName.Replace(".idx", ".pak"), FileMode.Open, FileAccess.Read);
-      foreach (ListViewItem checkedItem in this.lvIndexInfo.CheckedItems)
-      {
-        object data = this.LoadPakData(fs, checkedItem);
-        this.ExportData(selectedPath, checkedItem, data,this.LoadPakBytes_(fs,checkedItem));
-      }
-      fs.Close();
-    }
-
-    private void ExportData(string Path, ListViewItem lvItem, object data,byte[] origin_bytes)
-    {
-      string str = this._IndexRecords[int.Parse(lvItem.Text) - 1].FileName;
-      if (Path != null)
-        str = Path + "\\" + str;
-      if (this._InviewData == frmMain.InviewDataType.Text)
-        File.WriteAllText(str, (string) data);
-      else if (this._InviewData == frmMain.InviewDataType.IMG)
-        ((Image) data).Save(str.Replace(".img", ".bmp"), ImageFormat.Bmp);
-      else if (this._InviewData == frmMain.InviewDataType.BMP)
-        ((Image) data).Save(str, ImageFormat.Png);
-      else if (this._InviewData == frmMain.InviewDataType.TBT)
-        ((Image) data).Save(str.Replace(".tbt", ".gif"), ImageFormat.Gif);
-      else if (this._InviewData == frmMain.InviewDataType.SPR)
-      {
-
-        L1Spr.Frame[] frameArray = null;
-        if(data is byte[])
+        try
         {
-            frameArray = L1Spr.Load((byte[])data);
-        }else if(data is L1Spr.Frame[])
-        {
-            frameArray = (L1Spr.Frame[])data;
+          var (content, viewType) = this._fileOperationsManager.LoadPakData(fs, lvItem);
+          object data;
+          if (_viewerManager.CurrentViewType == Utility.InviewDataType.Text)
+          {
+              data = _viewerManager.GetCurrentText();
+          }
+          else if (_viewerManager.CurrentViewType == Utility.InviewDataType.IMG || _viewerManager.CurrentViewType == Utility.InviewDataType.BMP)
+          {
+              data = _viewerManager.GetCurrentImage();
+          }
+          else
+          {
+              data = content;
+          }
+
+          this._fileOperationsManager.ExportData(path, lvItem, data, content as byte[], viewType);
         }
-        for (int index = 0; index < frameArray.Length; ++index)
+        catch (Exception ex)
         {
-          if (frameArray[index].image != null)
-            frameArray[index].image.Save(str.Replace(".spr", string.Format("-{0:D2}(view).bmp", (object) index)), ImageFormat.Bmp);
+          MessageBox.Show($"Error exporting file: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-        File.WriteAllBytes(str, (byte[])origin_bytes);
       }
-      else
-        File.WriteAllBytes(str, (byte[])origin_bytes);
-    }
-
-    private void ExportSelected(string Path, ListViewItem lvItem)
-    {
-       FileStream fs = File.Open(this._PackFileName.Replace(".idx", ".pak"), FileMode.Open, FileAccess.Read);
-      if (this._InviewData == frmMain.InviewDataType.Text)
-        this.ExportData(Path, lvItem, (object) this.TextViewer.Text, this.LoadPakBytes_(fs, lvItem));
-      else if (this._InviewData == frmMain.InviewDataType.IMG || this._InviewData == frmMain.InviewDataType.BMP)
-      {
-        this.ExportData(Path, lvItem, (object) this.ImageViewer.Image, this.LoadPakBytes_(fs, lvItem));
-      }
-      else
-      {
-        L1PakTools.IndexRecord indexRecord = this._IndexRecords[int.Parse(lvItem.Text) - 1];
-        byte[] buffer = new byte[indexRecord.FileSize];
-        fs.Seek((long) indexRecord.Offset, SeekOrigin.Begin);
-        fs.Read(buffer, 0, indexRecord.FileSize);
-        this.ExportData(Path, lvItem, (object) buffer,buffer);
-      }
-      fs.Close();
     }
 
     private void mnuTools_Delete_Click(object sender, EventArgs e)
@@ -609,128 +446,30 @@ namespace PakViewer
         return;
       int[] DeleteID = new int[this.lvIndexInfo.CheckedItems.Count];
       int num = 0;
-      foreach (ListViewItem checkedItem in this.lvIndexInfo.CheckedItems) { 
-        DeleteID[num++] = int.Parse(checkedItem.Text) -1; // -1 because showed index is beginning with 1 not zero.
+      foreach (ListViewItem checkedItem in this.lvIndexInfo.CheckedItems)
+      {
+        DeleteID[num++] = int.Parse(checkedItem.Text) - 1;
       }
-      this.RebuildAll(DeleteID);
-      this.ShowRecords(this._IndexRecords);
+      try
+      {
+        this._fileOperationsManager.RebuildAll(this._PackFileName, DeleteID);
+        this.ShowRecords(this._pakFileManager.IndexRecords);
+      }
+      catch (Exception ex)
+      {
+        MessageBox.Show($"Error deleting files: {ex.Message}", "Delete Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+      }
     }
 
     private void mnuRebuild_Click(object sender, EventArgs e)
     {
-      this.RebuildAll(new int[0]);
-    }
-
-    private void RebuildAll(int[] DeleteID)
-    {
-      int length = this._IndexRecords.Length - DeleteID.Length;
-      L1PakTools.IndexRecord[] items = new L1PakTools.IndexRecord[length];
-      int[] keys = new int[length];
-      int index1 = 0;
-      int index2 = 0;
-      for (; index1 < this._IndexRecords.Length; ++index1)
-      {
-        if (Array.IndexOf<int>(DeleteID, index1) == -1)
-        {
-          items[index2] = this._IndexRecords[index1];
-          keys[index2] = this._IndexRecords[index1].Offset;
-          ++index2;
-        }
-        else
-        {
-          // Console.WriteLine("found deleted item:" + index1);
-        }
-      }
-      //Array.Sort<int, L1PakTools.IndexRecord>(keys, items);
-      this._IndexRecords = items;
-      this.tssProgressName.Text = "Creating new PAK file...";
-      this.tssProgress.Maximum = length;
-      string str1 = this._PackFileName.Replace(".idx", ".pak");
-      string str2 = this._PackFileName.Replace(".idx", ".pa_");
-      if (File.Exists(str2))
-        File.Delete(str2);
-      File.Move(str1, str2);
-      FileStream fileStream1 = File.OpenRead(str2);
-      FileStream fileStream2 = File.OpenWrite(str1);
-      for (int index3 = 0; index3 < length; ++index3)
-      {
-        byte[] buffer = new byte[this._IndexRecords[index3].FileSize];
-        fileStream1.Seek((long) this._IndexRecords[index3].Offset, SeekOrigin.Begin);
-        fileStream1.Read(buffer, 0, this._IndexRecords[index3].FileSize);
-        this._IndexRecords[index3].Offset = (int) fileStream2.Position;
-        fileStream2.Write(buffer, 0, this._IndexRecords[index3].FileSize);
-        this.tssProgress.Increment(1);
-      }
-      fileStream1.Close();
-      fileStream2.Close();
-      this.RebuildIndex();
-    }
-
-    private void RebuildIndex()
-    {
-      string str = this._PackFileName.Replace(".idx", ".id_");
-      if (File.Exists(str))
-        File.Delete(str);
-      File.Move(this._PackFileName, str);
-      byte[] numArray = new byte[4 + this._IndexRecords.Length * 28];
-      Array.Copy((Array) BitConverter.GetBytes(this._IndexRecords.Length), 0, (Array) numArray, 0, 4);
-      this.tssProgressName.Text = "Creating new IDX file...";
-      this.tssProgress.Maximum = this._IndexRecords.Length;
-      for (int index = 0; index < this._IndexRecords.Length; ++index)
-      {
-        int destinationIndex = 4 + index * 28;
-        Array.Copy((Array) BitConverter.GetBytes(this._IndexRecords[index].Offset), 0, (Array) numArray, destinationIndex, 4);
-        Encoding.Default.GetBytes(this._IndexRecords[index].FileName, 0, this._IndexRecords[index].FileName.Length, numArray, destinationIndex + 4);
-        Array.Copy((Array) BitConverter.GetBytes(this._IndexRecords[index].FileSize), 0, (Array) numArray, destinationIndex + 24, 4);
-        this.tssProgress.Increment(1);
-      }
-      if (this._IsPackFileProtected)
-      {
-        this.tssProgressName.Text = "Encoding...";
-        Array.Copy((Array) L1PakTools.Encode(numArray, 4), 0, (Array) numArray, 4, numArray.Length - 4);
-      }
-      File.WriteAllBytes(this._PackFileName, numArray);
-      this.tssProgressName.Text = "";
-    }
-
-    private void mnuTools_Update_Click(object sender, EventArgs e)
-    {
-      if (this._InviewData != frmMain.InviewDataType.Text || this.lvIndexInfo.SelectedItems.Count != 1)
-        return;
-      byte[] numArray = Encoding.Default.GetBytes(this.TextViewer.Text);
-      if (this._IsPackFileProtected)
-        numArray = L1PakTools.Encode(numArray, 0);
-      IEnumerator enumerator = this.lvIndexInfo.SelectedItems.GetEnumerator();
       try
       {
-        if (!enumerator.MoveNext())
-          return;
-        ListViewItem current = (ListViewItem) enumerator.Current;
-        int ID = int.Parse(current.Text) - 1;
-        FileStream fileStream1 = File.OpenWrite(this._PackFileName.Replace(".idx", ".pak"));
-        this._IndexRecords[ID].Offset = (int) fileStream1.Seek(0L, SeekOrigin.End);
-        this._IndexRecords[ID].FileSize = numArray.Length;
-        fileStream1.Write(numArray, 0, numArray.Length);
-        fileStream1.Close();
-        if (this._IsPackFileProtected)
-        {
-          this.RebuildIndex();
-        }
-        else
-        {
-          FileStream fileStream2 = File.OpenWrite(this._PackFileName);
-          fileStream2.Seek((long) (4 + ID * 28), SeekOrigin.Begin);
-          fileStream2.Write(BitConverter.GetBytes(this._IndexRecords[ID].Offset), 0, 4);
-          fileStream2.Close();
-        }
-        this.lvIndexInfo.Items.Insert(current.Index, this.CreatListViewItem(ID, this._IndexRecords[ID]));
-        this.lvIndexInfo.Items.Remove(current);
+        this._fileOperationsManager.RebuildAll(this._PackFileName, new int[0]);
       }
-      finally
+      catch (Exception ex)
       {
-        IDisposable disposable = enumerator as IDisposable;
-        if (disposable != null)
-          disposable.Dispose();
+        MessageBox.Show($"Error rebuilding files: {ex.Message}", "Rebuild Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
       }
     }
 
@@ -756,61 +495,73 @@ namespace PakViewer
       this.dlgAddFiles.FileName = "";
       if (this.dlgAddFiles.ShowDialog((IWin32Window) this) != DialogResult.OK)
         return;
-      FileStream fileStream1 = File.OpenWrite(this._PackFileName.Replace(".idx", ".pak"));
-      FileStream fileStream2 = File.OpenWrite(this._PackFileName);
-      foreach (string fileName in this.dlgAddFiles.FileNames)
+
+      try
       {
-         
-        byte[] numArray = File.ReadAllBytes(fileName);
-        if (this._IsPackFileProtected)
+        using (FileStream pakStream = File.OpenWrite(this._PackFileName.Replace(".idx", ".pak")))
+        using (FileStream idxStream = File.OpenWrite(this._PackFileName))
         {
-          this.tssProgressName.Text = string.Format("{0} Encoding...", (object) fileName);
-          numArray = L1PakTools.Encode(numArray, 0);
-          this.tssProgressName.Text = "";
-        }
-        int offset = (int) fileStream1.Seek(0L, SeekOrigin.End);
-        fileStream1.Write(numArray, 0, numArray.Length);
-
-        string filename = fileName.Substring(fileName.LastIndexOf('\\') + 1);
-
-        bool replace = false;
-        int index = -1;
-        for (int i = 0; i < this._IndexRecords.Length; ++i)
-        {
-            L1PakTools.IndexRecord record = this._IndexRecords[i];
-            if (record.FileName.Equals(filename))
+          foreach (string fileName in this.dlgAddFiles.FileNames)
+          {
+            byte[] fileData = File.ReadAllBytes(fileName);
+            if (this._pakFileManager.IsProtected)
             {
+              this.tssProgressName.Text = string.Format("{0} Encoding...", (object) fileName);
+              fileData = L1PakTools.Encode(fileData, 0);
+              this.tssProgressName.Text = "";
+            }
+
+            int offset = (int) pakStream.Seek(0L, SeekOrigin.End);
+            pakStream.Write(fileData, 0, fileData.Length);
+
+            string filename = fileName.Substring(fileName.LastIndexOf('\\') + 1);
+
+            bool replace = false;
+            int index = -1;
+            for (int i = 0; i < this._pakFileManager.IndexRecords.Length; ++i)
+            {
+              L1PakTools.IndexRecord record = this._pakFileManager.IndexRecords[i];
+              if (record.FileName.Equals(filename))
+              {
                 replace = true;
                 index = i;
+                break;
+              }
             }
-        }
-        
-        L1PakTools.IndexRecord record2 = new L1PakTools.IndexRecord(filename, numArray.Length, offset);
 
-        if (replace)
-        {
-             this._IndexRecords[index] = record2;
-        }
-        else
-        {
-            Array.Resize<L1PakTools.IndexRecord>(ref this._IndexRecords, this._IndexRecords.Length + 1);
-            this._IndexRecords[this._IndexRecords.Length -1] = record2;
-        }
-         this.ShowRecords(this._IndexRecords);
-      }
-      if (this._IsPackFileProtected)
-      {
-        fileStream2.Close();
-      }
-      else
-      {
-        fileStream2.Seek(0L, SeekOrigin.Begin);
-        fileStream2.Write(BitConverter.GetBytes(this._IndexRecords.Length), 0, 4);
-        fileStream2.Close();
-      }
-        this.RebuildIndex();
-        fileStream1.Close();
+            L1PakTools.IndexRecord record2 = new L1PakTools.IndexRecord(filename, fileData.Length, offset);
 
+            if (replace)
+            {
+              this._pakFileManager.IndexRecords[index] = record2;
+            }
+            else
+            {
+              var records = this._pakFileManager.IndexRecords;
+              Array.Resize<L1PakTools.IndexRecord>(ref records, records.Length + 1);
+              records[records.Length - 1] = record2;
+              this._pakFileManager.IndexRecords = records;
+            }
+          }
+
+          if (this._pakFileManager.IsProtected)
+          {
+            idxStream.Close();
+          }
+          else
+          {
+            idxStream.Seek(0L, SeekOrigin.Begin);
+            idxStream.Write(BitConverter.GetBytes(this._pakFileManager.IndexRecords.Length), 0, 4);
+          }
+        }
+
+        _fileOperationsManager.RebuildIndex(_PackFileName);
+        this.ShowRecords(this._pakFileManager.IndexRecords);
+      }
+      catch (Exception ex)
+      {
+        MessageBox.Show($"Error adding files: {ex.Message}", "Add Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+      }
     }
 
     private void txtSearch_KeyPress(object sender, KeyPressEventArgs e)
@@ -818,27 +569,27 @@ namespace PakViewer
       if ((int) e.KeyChar != 13)
         return;
       TextBox textBox = (TextBox) sender;
-      if (this._IndexRecords == null || this._IndexRecords.Length <= 0)
+      if (this._pakFileManager.IndexRecords == null || this._pakFileManager.IndexRecords.Length <= 0)
         return;
       List<ListViewItem> listViewItemList = new List<ListViewItem>();
-      for (int ID = 0; ID < this._IndexRecords.Length; ++ID)
+      for (int ID = 0; ID < this._pakFileManager.IndexRecords.Length; ++ID)
       {
-        L1PakTools.IndexRecord indexRecord = this._IndexRecords[ID];
+        L1PakTools.IndexRecord indexRecord = this._pakFileManager.IndexRecords[ID];
         if ((textBox.Text != "") )
         {
             if (textBox.Text.StartsWith("^")) {
                 if(indexRecord.FileName.IndexOf(textBox.Text.Substring(1), StringComparison.CurrentCultureIgnoreCase) == 0)
                 {
-                    listViewItemList.Add(this.CreatListViewItem(ID, indexRecord));
+                    listViewItemList.Add(this.CreateListViewItem(ID, indexRecord));
                 }
             }
             else if (indexRecord.FileName.IndexOf(textBox.Text, StringComparison.CurrentCultureIgnoreCase) != -1){
-                listViewItemList.Add(this.CreatListViewItem(ID, indexRecord));
+                listViewItemList.Add(this.CreateListViewItem(ID, indexRecord));
             }
         }
         else
         {
-            listViewItemList.Add(this.CreatListViewItem(ID, indexRecord));
+            listViewItemList.Add(this.CreateListViewItem(ID, indexRecord));
 
         }
     }
@@ -849,7 +600,7 @@ namespace PakViewer
       this.lvIndexInfo.Items.AddRange(listViewItemList.ToArray());
       this.lvIndexInfo.ResumeLayout();
       this.lvIndexInfo.Focus();
-      this.tssRecordCount.Text = string.Format("All:{0}", (object) this._IndexRecords.Length);
+      this.tssRecordCount.Text = string.Format("All:{0}", (object) this._pakFileManager.IndexRecords.Length);
       this.tssShowInListView.Text = string.Format("Showing:{0}", (object) this.lvIndexInfo.Items.Count);
     }
 
@@ -859,13 +610,14 @@ namespace PakViewer
       this.TextCompViewer.Visible = true;
       this.TextCompViewer.SourceText = this.TextViewer.Text;
       FileStream fs = File.Open(this._PackFileName.Replace(".idx", ".pak"), FileMode.Open, FileAccess.Read);
-      this.TextCompViewer.TargetText = (string) this.LoadPakData_(fs, (L1PakTools.IndexRecord) toolStripMenuItem.Tag);
+      var result = this._fileOperationsManager.LoadPakData(fs, (L1PakTools.IndexRecord) toolStripMenuItem.Tag);
+      this.TextCompViewer.TargetText = (string)result.content;
       fs.Close();
     }
 
     private void tsmCompare_DropDownOpening(object sender, EventArgs e)
     {
-      string fileName = this._IndexRecords[int.Parse(this.TextViewer.Tag.ToString()) - 1].FileName;
+      string fileName = this._pakFileManager.IndexRecords[int.Parse(this.TextViewer.Tag.ToString()) - 1].FileName;
       int num1 = fileName.LastIndexOf('-');
       this.tsmCompTW.Enabled = false;
       this.tsmCompHK.Enabled = false;
@@ -874,7 +626,7 @@ namespace PakViewer
       if (num1 < 0)
         return;
       string str1 = fileName.Substring(num1, 2);
-      foreach (L1PakTools.IndexRecord indexRecord in this._IndexRecords)
+      foreach (L1PakTools.IndexRecord indexRecord in this._pakFileManager.IndexRecords)
       {
         int num2 = indexRecord.FileName.LastIndexOf('-');
         if (num2 >= 0)
@@ -903,7 +655,7 @@ namespace PakViewer
 
     private void ctxMenu_Opening(object sender, CancelEventArgs e)
     {
-      this.tsmCompare.Enabled = this._InviewData == frmMain.InviewDataType.Text;
+      this.tsmCompare.Enabled = _viewerManager.CurrentViewType == Utility.InviewDataType.Text;
     }
 
     protected override void Dispose(bool disposing)
@@ -1214,6 +966,7 @@ namespace PakViewer
       this.mnuTools_SelectAll.Text = "Select All";
       this.mnuTools_SelectAll.Click += new EventHandler(this.tsmSelectAll_Click);
       this.dlgOpenFile.FileName = "openFileDialog1";
+      this.dlgOpenFile.Multiselect = true;
       this.splitContainer1.Dock = DockStyle.Fill;
       this.splitContainer1.FixedPanel = FixedPanel.Panel1;
       this.splitContainer1.Location = new Point(0, 24);
@@ -1470,15 +1223,52 @@ namespace PakViewer
       }
     }
 
-    private enum InviewDataType
+    private void mnuFiller_FileStyle(object sender, EventArgs e)
     {
-      Empty,
-      Text,
-      IMG,
-      BMP,
-      SPR,
-      TIL,
-      TBT,
+      UpdateLanguageFilters();
+      if (_pakFileManager?.IndexRecords != null)
+      {
+        ShowRecords(_pakFileManager.IndexRecords);
+      }
+    }
+
+    private void mnuTools_Update_Click(object sender, EventArgs e)
+    {
+      if (string.IsNullOrEmpty(_PackFileName))
+        return;
+      _fileOperationsManager.RebuildIndex(_PackFileName);
+    }
+
+    private void tsmSelectAll_Click(object sender, EventArgs e)
+    {
+      foreach (ListViewItem item in lvIndexInfo.Items)
+        item.Selected = true;
+    }
+
+    private void tsmUnselectAll_Click(object sender, EventArgs e)
+    {
+      foreach (ListViewItem item in lvIndexInfo.Items)
+        item.Selected = false;
+    }
+
+    private void mnuTools_Export_Click(object sender, EventArgs e)
+    {
+      _fileOperationsManager.ExportSelectedFiles(lvIndexInfo.SelectedItems);
+    }
+
+    private void mnuTools_ExportTo_Click(object sender, EventArgs e)
+    {
+      _fileOperationsManager.ExportSelectedFilesTo(lvIndexInfo.SelectedItems);
+    }
+
+    private void tsmExport_Click(object sender, EventArgs e)
+    {
+      _fileOperationsManager.ExportSelectedFiles(lvIndexInfo.SelectedItems);
+    }
+
+    private void tsmExportTo_Click(object sender, EventArgs e)
+    {
+      _fileOperationsManager.ExportSelectedFilesTo(lvIndexInfo.SelectedItems);
     }
   }
 }
